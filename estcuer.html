@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="http://code.jquery.com/ui/1.12.0/themes/smoothness/jquery-ui.css">
+    <link rel="stylesheet" href="http://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+    <script
+			  src="http://code.jquery.com/ui/1.12.1/jquery-ui.js"
+			  integrity="sha256-T0Vest3yCU7pafRw9r+settMBX6JkKN06dqBnpQ8d30="
+			  crossorigin="anonymous">
+    </script>
+    <script src="https://d3js.org/d3.v3.min.js"></script>
+    <style>
+      body {
+        margin-top: 20px;
+        font: 14px sans-serif;
+      }
+      .title {
+         font-size: 22px;
+         text-align: middle;
+         font-family: sans-serif;
+         font-weight: bold;
+         color: black;
+       }
+      .axis path,
+      .axis line {
+        fill: none;
+        stroke: #000;
+        shape-rendering: crispEdges;
+       }
+     .grid .tick {
+       stroke: lightgrey;
+       opacity: 0.7;
+      }
+     .grid path {
+       stroke-width: 0;
+     }
+     .x.axis path {
+       display: none;
+     }
+     .area_l {
+       fill: palegreen;
+       opacity: 0.9;
+     }
+     .area_s {
+       fill: grey;
+       opacity: 0.9;
+     }
+     .area_so{
+       fill: #FFED33;
+       opacity: 0.9;
+     }
+     .area_e{
+       fill: #EA3232;
+       opacity: 0.9;
+     }
+     .area_h{
+       fill: #423DB6;
+       opacity: 0.9;
+      }
+      .area_c{
+        fill:#0B0713;
+        opacity: 0.9;
+      }
+      .area_n{
+        fill:#2F4229;
+        opacity: 0.9;
+      }
+     .hidden {
+       fill: none !important;
+       stroke: none !important;
+     }
+     circle {
+      fill: white;
+      opacity: 0.9;
+      stroke: black;
+     }
+     .tooltip {
+       fill: #261F1F;
+       opacity: 0.9;
+       stroke-width: 0.5px;
+       stroke: #171212;
+     }
+     .tooltiptxt {
+       font-family: sans-serif;
+       font-size: 11px;
+       fill: white;
+     }
+     .leyenda {
+       fill: none;
+       stroke: black;
+       stroke-width: 1px;
+     }
+     .texto_leyenda{
+       font-family: sans-serif;
+       font-size: 12px;
+       fill: black;
+     }
+     label { display: block; }
+     select { width: 200px; text-align: middle; font-size: 30px}
+     .select {position: absolute; left: 500px }
+
+    </style>
+
+</head>
+
+<body>
+
+<h1 class="title">Autosuficiencia Energética en Castilla y León.</h1>
+
+<div class="controls">
+<div class="select">
+  <select name="provincia" id="provincia">
+    <option value="estcuer_dat/cyl.csv" selected>Castilla y León</option>
+    <option value="estcuer_dat/avila.csv">Ávila</option>
+    <option value="estcuer_dat/burgos.csv">Burgos</option>
+    <option value="estcuer_dat/leon.csv">León</option>
+    <option value="estcuer_dat/palencia.csv">Palencia</option>
+    <option value="estcuer_dat/salamanca.csv">Salamanca</option>
+    <option value="estcuer_dat/segovia.csv">Segovia</option>
+    <option value="estcuer_dat/soria.csv">Soria</option>
+    <option value="estcuer_dat/valladolid.csv">Valladolid</option>
+    <option value="estcuer_dat/zamora.csv">Zamora</option>
+  </select>
+</div>
+
+
+
+<div class="buttons">
+<label for="limpia">Solo energía Limpia.</label>
+<input type="radio" name="energias" value="0" id="limpia" />
+<label for="sucia">Solo energía Sucia.</label>
+<input type="radio" name="energias" value="1" id="sucia" />
+<label for="ambas">Ambas.</label>
+<input type="radio" name="energias" value="2" id="ambas" checked />
+</div>
+</div>
+
+<script>
+  $( "#provincia" ).selectmenu({
+    change: function( event, data ) {
+      console.log("Loaded: ", data.item.value);
+      reiniciar_datos();
+      dibujar_datos(data.item.value,$("[name='energias']:checked").val());
+    }
+   });
+
+  $( "input[name='energias']" ).checkboxradio();
+  $( "[name='energias']").on("change", elegirEnergia);
+
+  function elegirEnergia(e){
+    reiniciar_datos();
+    dibujar_datos($("#provincia").val(),$(this).val());
+  }
+</script>
+
+    <script type="text/javascript">
+      var margin = {top: 50, right: 20, bottom: 70, left: 70};
+      var w = 800 - margin.left - margin.right;
+      var h = 520 - margin.top - margin.bottom;
+      var radio_ptos = 4;
+      var x = d3.scale.ordinal().rangeRoundPoints([0, w],0);
+      var y = d3.scale.linear().range([h, 0]);
+      var formatPercent = d3.format(".0%");
+      var xAxis = d3.svg.axis().scale(x).orient("bottom");
+      var yAxis = d3.svg.axis().scale(y).orient("left").tickFormat(formatPercent);
+      var svg = d3.select("body").append("svg").attr("width", w + margin.left + margin.right)
+                                               .attr("height", h + margin.top + margin.bottom);
+      var g = svg.append("g").attr("transform", "translate(" + margin.left + ", " + margin.top + ")");
+
+      var labels = svg.append("g").attr("class", "labels");
+      labels.append("text").attr("transform", "rotate(-90)").attr("y", 3).attr("dy", ".71em").attr("x",-margin.top)
+                               .style("text-anchor", "end").text("Consumo cubierto [%]");
+
+      var leyenda = d3.select("body").append("svg").attr("width",400+margin.left).attr("height",200+margin.bottom);
+
+      leyenda.append('rect').attr('class','leyenda').attr('width',400).attr('height',185)
+        .attr('x',6).attr('y',6);
+
+      leyenda.append('rect').attr('width',15).attr('height',15).attr('x',20).attr('y',20).style('fill','palegreen');
+      leyenda.append('text').attr('class','texto_leyenda').attr('x',40).attr('y',31).text("Energía de origen limpio.");
+
+      leyenda.append('rect').attr('width',15).attr('height',15).attr('x',40).attr('y',45).style('fill','#EA3232');
+      leyenda.append('text').attr('class','texto_leyenda').attr('x',60).attr('y',56).text("Energía eólica.");
+
+      leyenda.append('rect').attr('width',15).attr('height',15).attr('x',40).attr('y',65).style('fill','#FFED33');
+      leyenda.append('text').attr('class','texto_leyenda').attr('x',60).attr('y',77).text("Energía solar.");
+
+      leyenda.append('rect').attr('width',15).attr('height',15).attr('x',40).attr('y',85).style('fill','#423DB6');
+      leyenda.append('text').attr('class','texto_leyenda').attr('x',60).attr('y',98).text("Energía hidráulica.");
+
+      leyenda.append('rect').attr('width',15).attr('height',15).attr('x',20).attr('y',114).style('fill','grey');
+      leyenda.append('text').attr('class','texto_leyenda').attr('x',40).attr('y',125).text("Energía de origen sucio.");
+
+      leyenda.append('rect').attr('width',15).attr('height',15).attr('x',40).attr('y',139).style('fill','#0B0713');
+      leyenda.append('text').attr('class','texto_leyenda').attr('x',60).attr('y',150).text("Energía del carbón.");
+
+      leyenda.append('rect').attr('width',15).attr('height',15).attr('x',40).attr('y',159).style('fill','#2F4229');
+      leyenda.append('text').attr('class','texto_leyenda').attr('x',60).attr('y',171).text("Energía nuclear.");
+
+      var archivo = document.getElementById("provincia").value;
+      var num_energias = $("[name='energias']:checked").val()
+      dibujar_datos(archivo,num_energias);
+
+    function reiniciar_datos(){
+      d3.selectAll('.puntos').remove();
+      d3.selectAll('.area_l').remove();
+      d3.selectAll('.area_s').remove();
+      d3.selectAll('.area_e').remove();
+      d3.selectAll('.area_so').remove();
+      d3.selectAll('.area_h').remove();
+      d3.selectAll('.area_c').remove();
+      d3.selectAll('.area_n').remove();
+      d3.selectAll('.grid').remove();
+      d3.selectAll('.axis').remove();
+    }
+
+    function dibujar_datos(archivo,num_energias){
+        d3.csv(archivo, function(error, data) {
+        if(error) throw error;
+
+        var proporciones = [data.map(function(d){return {x:parseInt(d.Anyo),y:(parseFloat(d.Eólica)+parseFloat(d.Solar)+parseFloat(d.Hidráulica))/d.Consumo,consumo:parseFloat(d.Consumo)}}),
+                            data.map(function(d){return {x:parseInt(d.Anyo), y:(parseFloat(d.Nuclear)+parseFloat(d.Carbón))/d.Consumo,
+                            consumo:parseFloat(d.Consumo)}})];
+
+        var proporcionesL = [
+        data.map(function(d){return {x:parseInt(d.Anyo),y:(parseFloat(d.Eólica)/d.Consumo),consumo:parseFloat(d.Consumo)}}),
+        data.map(function(d){return {x:parseInt(d.Anyo),y:(parseFloat(d.Solar)/d.Consumo),consumo:parseFloat(d.Consumo)}}),
+        data.map(function(d){return {x:parseInt(d.Anyo),y:(parseFloat(d.Hidráulica)/d.Consumo),consumo:parseFloat(d.Consumo)}})];
+
+        var capas = d3.layout.stack();
+
+        var area = d3.svg.area();
+        area.x(function(d){return x(d.x)});
+        area.y1(function(d){ return y(d.y + d.y0)});
+        area.y0(function(d){ return y(d.y0)});
+
+        switch(num_energias){
+          case "2": //visualizar ambas energias
+            var proporcionesS = [
+            data.map(function(d){return {x:parseInt(d.Anyo),y:(parseFloat(d.Eólica)+parseFloat(d.Solar)+parseFloat(d.Hidráulica))/d.Consumo,consumo:parseFloat(d.Consumo)}}),
+            data.map(function(d){return {x:parseInt(d.Anyo),y:(parseFloat(d.Carbón)/d.Consumo),consumo:parseFloat(d.Consumo)}}),
+            data.map(function(d){return {x:parseInt(d.Anyo),y:(parseFloat(d.Nuclear)/d.Consumo),consumo:parseFloat(d.Consumo)}})];
+
+            x.domain(data.map(function(d){return d.Anyo }));
+            y.domain([0,d3.max(capas(proporciones)[1],function(d){return d.y0+d.y})]);
+
+            g.append('g').attr('class','x axis').attr('transform','translate(0,'+h+')').call(xAxis);
+            d3.select('.x').selectAll('text').attr("dx", "-.8em").attr("dy", ".15em")
+                .style("text-anchor", "end").attr("transform", "rotate(-65)");
+            g.append('g').attr('class','y axis').call(yAxis);
+
+            var yGrid = d3.svg.axis().scale(y).orient('left').ticks(10).tickSize(-w,0,0).tickFormat('');
+            g.append('g').attr('class','grid').call(yGrid);
+
+            g.append('path').attr('class','area_l').datum(capas(proporciones)[0]).attr('d',area).on("click",handleClickL);
+
+            g.append('path').attr('class','area_s').datum(capas(proporciones)[1]).attr('d',area).on("click",handleClickS);
+
+
+            g.append('path').attr('class','hidden area_e').datum(capas(proporcionesL)[0]).attr('d',area).on("click",handleClickL);
+            g.append('path').attr('class','hidden area_so').datum(capas(proporcionesL)[1]).attr('d',area).on("click",handleClickL);
+            g.append('path').attr('class','hidden area_h').datum(capas(proporcionesL)[2]).attr('d',area).on("click",handleClickL);
+
+            g.append('path').attr('class','hidden area_c').datum(capas(proporcionesS)[1]).attr('d',area).on("click",handleClickS);
+            g.append('path').attr('class','hidden area_n').datum(capas(proporcionesS)[2]).attr('d',area).on("click",handleClickS);
+
+            puntos_l = g.append('g').attr('class','puntos');
+            puntos_l_so = g.append('g').attr('class','puntos');
+            puntos_l_h = g.append('g').attr('class','puntos');
+            puntos_l_e = g.append('g').attr('class','puntos');
+            puntos_s = g.append('g').attr('class','puntos');
+            puntos_s_c = g.append('g').attr('class','puntos');
+            puntos_s_n = g.append('g').attr('class','puntos');
+
+            puntos_l.selectAll('circle').data(capas(proporciones)[0]).enter().append('circle').attr('cx',function(d){return x(d.x)})
+            .attr('cy',function(d){
+                      if(d.y==0){return -100000}
+                      else{return y(d.y+d.y0)}
+                     })
+             .attr('r',radio_ptos).attr('class','puntos_limpia').on("mouseover",handleMouseOver).on("mouseout",handleMouseOut);
+
+             puntos_l_e.selectAll('circle').data(capas(proporcionesL)[0]).enter().append('circle').attr('cx',function(d){return x(d.x)})
+            .attr('cy',function(d){
+                      if(d.y==0){return -100000}
+                      else{return y(d.y+d.y0)}
+                     })
+             .attr('r',radio_ptos).attr('class','puntos_limpia_sub hidden').on("mouseover",handleMouseOver).on("mouseout",handleMouseOut);
+
+             puntos_l_so.selectAll('circle').data(capas(proporcionesL)[1]).enter().append('circle').attr('cx',function(d){return x(d.x)})
+             .attr('cy',function(d){
+                      if(d.y==0){return -100000}
+                      else{return y(d.y+d.y0)}
+                     })
+             .attr('r',radio_ptos).attr('class','puntos_limpia_sub hidden').on("mouseover",handleMouseOver).on("mouseout",handleMouseOut);
+
+             puntos_l_h.selectAll('circle').data(capas(proporcionesL)[2]).enter().append('circle').attr('cx',function(d){return x(d.x)})
+             .attr('cy',function(d){
+                      if(d.y==0){return -100000}
+                      else{return y(d.y+d.y0)}
+                     })
+             .attr('r',radio_ptos).attr('class','puntos_limpia_sub hidden').on("mouseover",handleMouseOver).on("mouseout",handleMouseOut);
+
+             puntos_s.selectAll('circle').data(capas(proporciones)[1]).enter().append('circle').attr('cx',function(d){return x(d.x)})
+                .attr('cy', function(d){
+                              if(d.y==0){return -100000}
+                              else{return y(d.y+d.y0)}
+                             })
+                .attr('r',radio_ptos).attr('class','puntos_sucia').on("mouseover",handleMouseOver).on("mouseout",handleMouseOut);
+
+             puntos_s_c.selectAll('circle').data(capas(proporcionesS)[1]).enter().append('circle').attr('cx',function(d){return x(d.x)})
+                .attr('cy', function(d){
+                              if(d.y==0){return -100000}
+                              else{return y(d.y+d.y0)}
+                             })
+                .attr('r',radio_ptos).attr('class','puntos_sucia_sub hidden').on("mouseover",handleMouseOver).on("mouseout",handleMouseOut);
+
+             puntos_s_n.selectAll('circle').data(capas(proporcionesS)[2]).enter().append('circle').attr('cx',function(d){return x(d.x)})
+                .attr('cy', function(d){
+                              if(d.y==0){return -100000}
+                              else{return y(d.y+d.y0)}
+                             })
+                .attr('r',radio_ptos).attr('class','puntos_sucia_sub hidden').on("mouseover",handleMouseOver).on("mouseout",handleMouseOut);
+
+             break;
+          case "0": //visualizar solo energia limpia
+              x.domain(data.map(function(d){return d.Anyo }));
+              y.domain([0,d3.max(capas(proporcionesL)[2],function(d){return d.y0+d.y})]);
+
+              g.append('g').attr('class','x axis').attr('transform','translate(0,'+h+')').call(xAxis);
+              d3.select('.x').selectAll('text').attr("dx", "-.8em").attr("dy", ".15em")
+                .style("text-anchor", "end").attr("transform", "rotate(-65)");
+              g.append('g').attr('class','y axis').call(yAxis);
+
+              var yGrid = d3.svg.axis().scale(y).orient('left').ticks(10).tickSize(-w,0,0).tickFormat('');
+              g.append('g').attr('class','grid').call(yGrid);
+
+              g.append('path').attr('class','area_l').datum(capas(proporciones)[0]).attr('d',area).on("click",handleClickL);
+
+              g.append('path').attr('class','hidden area_e').datum(capas(proporcionesL)[0]).attr('d',area).on("click",handleClickL);
+              g.append('path').attr('class','hidden area_so').datum(capas(proporcionesL)[1]).attr('d',area).on("click",handleClickL);
+              g.append('path').attr('class','hidden area_h').datum(capas(proporcionesL)[2]).attr('d',area).on("click",handleClickL);
+
+              puntos_l = g.append('g').attr('class','puntos');
+              puntos_l_so = g.append('g').attr('class','puntos');
+              puntos_l_h = g.append('g').attr('class','puntos');
+              puntos_l_e = g.append('g').attr('class','puntos');
+
+              puntos_l.selectAll('circle').data(capas(proporciones)[0]).enter().append('circle').attr('cx',function(d){return x(d.x)})
+              .attr('cy',function(d){
+                        if(d.y==0){return -100000}
+                        else{return y(d.y+d.y0)}
+                       })
+               .attr('r',radio_ptos).attr('class','puntos_limpia').on("mouseover",handleMouseOver).on("mouseout",handleMouseOut);
+
+               puntos_l_e.selectAll('circle').data(capas(proporcionesL)[0]).enter().append('circle').attr('cx',function(d){return x(d.x)})
+              .attr('cy',function(d){
+                        if(d.y==0){return -100000}
+                        else{return y(d.y+d.y0)}
+                       })
+               .attr('r',radio_ptos).attr('class','puntos_limpia_sub hidden').on("mouseover",handleMouseOver).on("mouseout",handleMouseOut);
+
+               puntos_l_so.selectAll('circle').data(capas(proporcionesL)[1]).enter().append('circle').attr('cx',function(d){return x(d.x)})
+               .attr('cy',function(d){
+                        if(d.y==0){return -100000}
+                        else{return y(d.y+d.y0)}
+                       })
+               .attr('r',radio_ptos).attr('class','puntos_limpia_sub hidden').on("mouseover",handleMouseOver).on("mouseout",handleMouseOut);
+
+               puntos_l_h.selectAll('circle').data(capas(proporcionesL)[2]).enter().append('circle').attr('cx',function(d){return x(d.x)})
+               .attr('cy',function(d){
+                        if(d.y==0){return -100000}
+                        else{return y(d.y+d.y0)}
+                       })
+               .attr('r',radio_ptos).attr('class','puntos_limpia_sub hidden').on("mouseover",handleMouseOver).on("mouseout",handleMouseOut);
+            break;
+          case "1": //visualizar solo energia sucia
+            proporciones = [data.map(function(d){return {x:parseInt(d.Anyo), y:(parseFloat(d.Nuclear)+parseFloat(d.Carbón))/d.Consumo,
+            consumo:parseFloat(d.Consumo)}})];
+            proporcionesS = [
+            data.map(function(d){return {x:parseInt(d.Anyo),y:(parseFloat(d.Carbón)/d.Consumo),consumo:parseFloat(d.Consumo)}}),
+            data.map(function(d){return {x:parseInt(d.Anyo),y:(parseFloat(d.Nuclear)/d.Consumo),consumo:parseFloat(d.Consumo)}})];
+
+            x.domain(data.map(function(d){return d.Anyo }));
+            y.domain([0,Math.max(0.2,d3.max(capas(proporcionesS)[1],function(d){return d.y0+d.y}))]);
+
+            g.append('g').attr('class','x axis').attr('transform','translate(0,'+h+')').call(xAxis);
+            d3.select('.x').selectAll('text').attr("dx", "-.8em").attr("dy", ".15em")
+              .style("text-anchor", "end").attr("transform", "rotate(-65)");
+            g.append('g').attr('class','y axis').call(yAxis);
+
+            var yGrid = d3.svg.axis().scale(y).orient('left').ticks(10).tickSize(-w,0,0).tickFormat('');
+            g.append('g').attr('class','grid').call(yGrid);
+            g.append('path').attr('class','area_s').datum(capas(proporciones)[0]).attr('d',area).on("click",handleClickS);
+
+            g.append('path').attr('class','hidden area_c').datum(capas(proporcionesS)[0]).attr('d',area).on("click",handleClickS);
+            g.append('path').attr('class','hidden area_n').datum(capas(proporcionesS)[1]).attr('d',area).on("click",handleClickS);
+
+            puntos_s = g.append('g').attr('class','puntos');
+            puntos_s_c = g.append('g').attr('class','puntos');
+            puntos_s_n = g.append('g').attr('class','puntos');
+
+            puntos_s.selectAll('circle').data(capas(proporciones)[0]).enter().append('circle').attr('cx',function(d){return x(d.x)})
+                .attr('cy', function(d){
+                              if(d.y==0){return -100000}
+                              else{return y(d.y+d.y0)}
+                             })
+                .attr('r',radio_ptos).attr('class','puntos_sucia').on("mouseover",handleMouseOver).on("mouseout",handleMouseOut);
+
+             puntos_s_c.selectAll('circle').data(capas(proporcionesS)[0]).enter().append('circle').attr('cx',function(d){return x(d.x)})
+                .attr('cy', function(d){
+                              if(d.y==0){return -100000}
+                              else{return y(d.y+d.y0)}
+                             })
+                .attr('r',radio_ptos).attr('class','puntos_sucia_sub hidden').on("mouseover",handleMouseOver).on("mouseout",handleMouseOut);
+
+             puntos_s_n.selectAll('circle').data(capas(proporcionesS)[1]).enter().append('circle').attr('cx',function(d){return x(d.x)})
+                .attr('cy', function(d){
+                              if(d.y==0){return -100000}
+                              else{return y(d.y+d.y0)}
+                             })
+                .attr('r',radio_ptos).attr('class','puntos_sucia_sub hidden').on("mouseover",handleMouseOver).on("mouseout",handleMouseOut);
+             break;
+          default:
+            console.log("Error");
+          break;
+        }
+      });
+    }
+
+    function handleMouseOver(d,i){
+        var anyo = d.x;
+        var proporcion_cubierta = d.y;
+        var consumicion_anyo = d.consumo;
+        var producido_anyo = Math.round(proporcion_cubierta*consumicion_anyo);
+
+        if(anyo==2014){
+          var tooltip = g.append('rect').attr('class','tooltip').attr('width',170).attr('height',50)
+          .attr('x',d3.select(this).attr('cx')).attr('y',d3.select(this).attr('cy')).attr("transform", "translate(-170,10)");
+
+          g.append('text').attr('class','tooltiptxt').text("Año: "+anyo).attr('x',tooltip.attr('x'))
+                          .attr('y',tooltip.attr('y')).attr("transform", "translate(-170,10)").attr('dx','3px').attr('dy','14px');
+
+          g.append('text').attr('class','tooltiptxt').text("Consumido: "+consumicion_anyo+" teps").attr('x',tooltip.attr('x'))
+                          .attr('y',tooltip.attr('y')).attr("transform", "translate(-170,10)").attr('dx','3px').attr('dy','28px');
+
+          g.append('text').attr('class','tooltiptxt').text("Producido: "+producido_anyo+" teps").attr('x',tooltip.attr('x'))
+                          .attr('y',tooltip.attr('y')).attr("transform", "translate(-170,10)").attr('dx','3px').attr('dy','42px');
+        }
+        else{
+          var tooltip = g.append('rect').attr('class','tooltip').attr('width',170).attr('height',50)
+          .attr('x',d3.select(this).attr('cx')).attr('y',d3.select(this).attr('cy')).attr("transform", "translate(-65,10)");
+          g.append('text').attr('class','tooltiptxt').text("Año: "+anyo).attr('x',tooltip.attr('x'))
+                          .attr('y',tooltip.attr('y')).attr("transform", "translate(-65,10)").attr('dx','3px').attr('dy','14px');
+
+          g.append('text').attr('class','tooltiptxt').text("Consumido: "+consumicion_anyo+" teps").attr('x',tooltip.attr('x'))
+                          .attr('y',tooltip.attr('y')).attr("transform", "translate(-65,10)").attr('dx','3px').attr('dy','28px');
+
+          g.append('text').attr('class','tooltiptxt').text("Producido: "+producido_anyo+" teps").attr('x',tooltip.attr('x'))
+                          .attr('y',tooltip.attr('y')).attr("transform", "translate(-65,10)").attr('dx','3px').attr('dy','42px');
+        }
+
+      }
+
+    function handleMouseOut(d,i){
+        d3.selectAll('.tooltip').remove();
+        d3.selectAll('.tooltiptxt').remove();
+      }
+
+    function handleClickL(d,i){
+        if(svg.select('.area_l').classed('hidden')){
+          svg.select('.area_l').attr('class','area_l');
+          svg.selectAll('.puntos_limpia').attr('class','puntos_limpia');
+          svg.selectAll('.puntos_limpia_sub').attr('class','puntos_limpia_sub hidden');
+          svg.select('.area_e').attr('class','hidden area_e');
+          svg.select('.area_so').attr('class','hidden area_so');
+          svg.select('.area_h').attr('class','hidden area_h');
+        }
+        else{
+          svg.selectAll('.puntos_limpia').attr('class','puntos_limpia hidden');
+          svg.selectAll('.puntos_limpia_sub').attr('class','puntos_limpia_sub');
+          svg.select('.area_e').attr('class','area_e');
+          svg.select('.area_so').attr('class','area_so');
+          svg.select('.area_h').attr('class','area_h');
+          svg.select('.area_l').attr('class','area_l hidden');
+        }
+      }
+
+    function handleClickS(d,i){
+        if(svg.select('.area_s').classed('hidden')){
+          svg.selectAll('.puntos_sucia_sub').attr('class','puntos_sucia_sub hidden');
+          svg.select('.area_s').attr('class','area_s');
+          svg.select('.area_c').attr('class','hidden area_c');
+          svg.select('.area_n').attr('class','hidden area_n');
+        }
+        else{
+          svg.select('.area_c').attr('class','area_c');
+          svg.select('.area_n').attr('class','area_n');
+          svg.select('.area_s').attr('class','area_s hidden');
+          svg.selectAll('.puntos_sucia_sub').attr('class','puntos_sucia_sub');
+        }
+      }
+
+  </script>
+
+</body>
+
+</html>
